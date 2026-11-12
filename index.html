@@ -136,6 +136,15 @@ footer.rodape img{height:40px}
 .kpi .kpi-esc img{width:30px;height:30px;object-fit:contain}
 .kpi .kpi-esc strong{font-size:15px}
 .vermelho{color:#C62828}
+.sel-esc{position:relative}
+.sel-esc button{display:inline-flex;align-items:center;gap:8px;min-width:190px;font:inherit;font-size:13px;color:var(--texto);background:#fff;border:1px solid var(--cinza);padding:5px 10px;cursor:pointer;text-align:left}
+.sel-esc button::after{content:"▾";margin-left:auto;color:var(--texto-2)}
+.sel-esc ul{position:absolute;right:0;top:calc(100% + 4px);z-index:10;min-width:100%;max-height:340px;overflow-y:auto;margin:0;padding:4px 0;list-style:none;background:#fff;border:1px solid var(--cinza);box-shadow:0 4px 14px rgba(0,0,0,.1)}
+.sel-esc li{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:13px;color:var(--texto);cursor:pointer;white-space:nowrap}
+.sel-esc li:hover,.sel-esc li.foco{background:var(--s1)}
+.sel-esc li[aria-selected="true"]{font-weight:700;color:var(--roxo)}
+.sel-esc img,.sel-esc .esc-ph{width:22px;height:22px;object-fit:contain;flex:none}
+.sel-esc .todos{display:inline-block;width:22px;flex:none}
 .tabela-wrap{overflow-x:visible}
 table.ranking{min-width:0;width:100%}
 .ranking th{white-space:normal;line-height:1.15;padding:6px 4px;letter-spacing:.02em;vertical-align:bottom}
@@ -296,7 +305,7 @@ details.metodo dd{margin:0}
 
   <section class="bloco">
     <div class="h2linha"><h2>Índice da reta final</h2>
-      <div class="sec-filtro"><span id="filtroEsc"></span><label for="selClube">Clube</label><select id="selClube"></select></div></div>
+      <div class="sec-filtro"><span id="rotClube">Clube</span><div class="sel-esc" id="selClube"></div></div></div>
     <p class="h2sub">Cada jogo que falta, de 0 (fácil) a 100 (difícil). Fácil: até 38 · médio: até 54 · difícil: até 68 · muito difícil: acima (um quarto dos 33 jogos em cada).</p>
     <div class="tabela-wrap"><table class="ranking" id="tabIndice"></table></div>
     <div class="tabela-wrap" style="margin-top:18px;max-height:460px;overflow:auto"><table class="ranking" id="tabJogos"></table></div>
@@ -460,10 +469,33 @@ tabela("tabIndice", comInd, [
   {rot: "Cai", val: r => r.chance_cair, cel: r => pc(r.chance_cair), n: true},
 ], {i: 8, dir: -1});
 let clubeSel = "";
-const sel = document.getElementById("selClube");
-sel.replaceChildren(new Option("Todos", ""), ...[...new Set(DADOS.jogos.map(j => j.clube))].sort((a, b) => a.localeCompare(b, "pt")).map(c => new Option(c, c)));
+/* seletor de clube com escudo (lista própria: o select nativo não mostra imagem) */
+const OPC = ["", ...[...new Set(DADOS.jogos.map(j => j.clube))].sort((a, b) => a.localeCompare(b, "pt"))];
+const selBox = document.getElementById("selClube");
+const selBtn = el("button", {type: "button", "aria-haspopup": "listbox", "aria-expanded": "false", "aria-labelledby": "rotClube selClubeBtn", id: "selClubeBtn"});
+const selLista = el("ul", {role: "listbox", tabindex: "-1", "aria-labelledby": "rotClube"});
+selLista.hidden = true;
+const rotulo = c => c ? [escudo(c), c] : [el("span", {class: "todos"}), "Todos"];
+let focoIdx = 0;
+function marcaFoco(i) { focoIdx = (i + OPC.length) % OPC.length; [...selLista.children].forEach((li, k) => li.classList.toggle("foco", k === focoIdx));
+  selLista.children[focoIdx].scrollIntoView({block: "nearest"}); selLista.setAttribute("aria-activedescendant", selLista.children[focoIdx].id); }
+function abre() { selLista.hidden = false; selBtn.setAttribute("aria-expanded", "true"); marcaFoco(OPC.indexOf(clubeSel)); selLista.focus(); }
+function fecha(volta) { selLista.hidden = true; selBtn.setAttribute("aria-expanded", "false"); if (volta) selBtn.focus(); }
+function escolhe(c) { clubeSel = c; selBtn.replaceChildren(...rotulo(c)); [...selLista.children].forEach((li, k) => li.setAttribute("aria-selected", String(OPC[k] === c))); fecha(true); desenhaJogos(); }
+selLista.replaceChildren(...OPC.map((c, k) => { const li = el("li", {role: "option", id: "opc" + k, "aria-selected": String(c === clubeSel)}, ...rotulo(c));
+  li.onclick = () => escolhe(c); li.onmousemove = () => marcaFoco(k); return li; }));
+selBtn.replaceChildren(...rotulo(""));
+selBtn.onclick = () => selLista.hidden ? abre() : fecha();
+selBtn.onkeydown = ev => { if (["ArrowDown", "ArrowUp", "Enter", " "].includes(ev.key)) { ev.preventDefault(); abre(); } };
+selLista.onkeydown = ev => {
+  if (ev.key === "ArrowDown") { ev.preventDefault(); marcaFoco(focoIdx + 1); }
+  else if (ev.key === "ArrowUp") { ev.preventDefault(); marcaFoco(focoIdx - 1); }
+  else if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); escolhe(OPC[focoIdx]); }
+  else if (ev.key === "Escape" || ev.key === "Tab") fecha(ev.key === "Escape");
+};
+document.addEventListener("click", ev => { if (!selBox.contains(ev.target)) fecha(); });
+selBox.replaceChildren(selBtn, selLista);
 function desenhaJogos() {
-  document.getElementById("filtroEsc").replaceChildren(clubeSel ? escudo(clubeSel) : "");
   const rows = DADOS.jogos.filter(j => !clubeSel || j.clube === clubeSel);
   tabela("tabJogos", rows, [
     {rot: "", val: r => r.clube, cel: r => clube(r.clube)},
@@ -481,7 +513,6 @@ function desenhaJogos() {
     {rot: "Pts esp.", val: r => r.pontos_esperados, cel: r => num1(r.pontos_esperados), n: true},
   ], {i: 0, dir: 1});
 }
-sel.onchange = () => { clubeSel = sel.value; desenhaJogos(); };
 
 /* xG e confrontos */
 tabela("tabXg", DADOS.xg, [
